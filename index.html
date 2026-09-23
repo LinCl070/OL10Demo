@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <!-- 页面只负责提供 DOM 骨架和运行时配置，地图业务由 /src/main.js 装配。 -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Atlas GIS 工作台</title>
+  <link rel="icon" href="/favicon.svg" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="GIS 功能仪表盘">
+      <header class="brand"><div class="brand-row"><div class="brand-mark">A</div><div class="brand-copy"><h1>Atlas GIS</h1><p>空间分析工作台</p></div></div><!-- 最小化工作台：折叠侧栏并扩大地图区域。 --><button class="sidebar-collapse" id="sidebarCollapse" type="button" aria-label="最小化工作台" aria-expanded="true" title="最小化工作台"><span aria-hidden="true">‹</span></button></header>
+      <div class="sidebar-scroll">
+        <div class="section-label">地图导航</div>
+        <div class="od-stack">
+          <!-- 放大地图：提高当前视图缩放级别。 -->
+          <button class="tool-btn" id="zoomIn"><span class="tool-icon">＋</span><span>放大地图</span><span class="hint">+</span></button>
+          <!-- 缩小地图：降低当前视图缩放级别。 -->
+          <button class="tool-btn" id="zoomOut"><span class="tool-icon">−</span><span>缩小地图</span><span class="hint">−</span></button>
+          <!-- 回到成都：恢复成都中心点和默认缩放。 -->
+          <button class="tool-btn" id="home"><span class="tool-icon">⌂</span><span>回到成都</span><span class="hint">定位</span></button>
+        </div>
+        <div class="divider"></div><div class="section-label">空间测量</div>
+        <div class="od-stack">
+          <!-- 测量距离：在地图上绘制折线并计算长度。 -->
+          <button class="tool-btn" data-measure="distance"><span class="tool-icon">⌁</span><span>测量距离</span><span class="hint">线</span></button>
+          <!-- 测量面积：在地图上绘制面并计算面积。 -->
+          <button class="tool-btn" data-measure="area"><span class="tool-icon">▱</span><span>测量面积</span><span class="hint">面</span></button>
+          <!-- 测量角度：连续选取三个点计算夹角。 -->
+          <button class="tool-btn" data-measure="angle"><span class="tool-icon">∠</span><span>测量角度</span><span class="hint">3点</span></button>
+        </div>
+        <div class="divider"></div><div class="section-label">底图切换</div>
+        <div class="base-switch" role="group" aria-label="底图切换">
+          <!-- 影像底图：显示天地图影像与标注。 -->
+          <button class="base-btn active" id="imageryBaseBtn" type="button">影像底图</button>
+          <!-- 全球境界：显示全球行政境界底图。 -->
+          <button class="base-btn" id="boundaryBaseBtn" type="button">全球境界</button>
+          <!-- 地形晕渲：显示地形晕渲底图。 -->
+          <button class="base-btn" id="terrainBaseBtn" type="button">地形晕渲</button>
+          <!-- 高德底图：显示高德道路底图。 -->
+          <button class="base-btn" id="amapBaseBtn" type="button">高德底图</button>
+          <!-- 百度底图：显示百度地图标注底图。 -->
+          <button class="base-btn" id="baiduBaseBtn" type="button">百度底图</button>
+        </div>
+        <div class="divider"></div><div class="section-label">图层控制</div>
+        <div class="od-stack">
+          <!-- 省级行政区：切换 GeoServer 省级行政区图层。 -->
+          <button class="layer-row on" id="chinaToggle"><span class="tool-icon">▧</span><span>省级行政区</span><span class="switch" aria-hidden="true"><i></i></span></button>
+          <!-- 主要铁路：切换 GeoServer 铁路图层。 -->
+          <button class="layer-row on" id="railwayToggle"><span class="tool-icon">▤</span><span>主要铁路</span><span class="switch" aria-hidden="true"><i></i></span></button>
+          <!-- 地市级以上居民地：切换居民地图层。 -->
+          <button class="layer-row on" id="settlementToggle"><span class="tool-icon">⌖</span><span>地市级以上居民地</span><span class="switch" aria-hidden="true"><i></i></span></button>
+          <!-- 成都轮廓：切换成都 GeoJSON 轮廓。 -->
+          <button class="layer-row on" id="chengduOutlineToggle"><span class="tool-icon">◇</span><span>成都轮廓</span><span class="switch" aria-hidden="true"><i></i></span></button>
+          <!-- 省份轮廓：切换省份 GeoJSON 轮廓。 -->
+          <button class="layer-row on" id="provinceOutlineToggle"><span class="tool-icon">◇</span><span>省份轮廓</span><span class="switch" aria-hidden="true"><i></i></span></button>
+          <!-- 地震数据：切换地震 KML 点图层。 -->
+          <button class="layer-row on" id="earthquakeToggle"><span class="tool-icon">◎</span><span>地震数据</span><span class="switch" aria-hidden="true"><i></i></span></button>
+        </div>
+        <div class="divider"></div><div class="section-label">地图输出</div>
+        <div class="action-grid" role="group" aria-label="地图输出">
+          <!-- 导出图片：下载当前地图容器为 PNG。 -->
+          <button class="action-btn" id="exportImageBtn" type="button">导出图片</button>
+          <!-- 导出 PDF：下载当前地图容器为 PDF。 -->
+          <button class="action-btn" id="exportPdfBtn" type="button">导出 PDF</button>
+        </div>
+        <div class="divider"></div><div class="section-label">图形绘制</div>
+        <div class="action-grid" role="group" aria-label="图形绘制">
+          <!-- 绘制点：在地图上新增点要素。 -->
+          <button class="action-btn" type="button" data-draw-type="Point">绘制点</button>
+          <!-- 绘制线：在地图上新增线要素。 -->
+          <button class="action-btn" type="button" data-draw-type="LineString">绘制线</button>
+          <!-- 绘制多边形：在地图上新增面要素。 -->
+          <button class="action-btn" type="button" data-draw-type="Polygon">绘制多边形</button>
+          <!-- 绘制圆：在地图上新增圆要素。 -->
+          <button class="action-btn" type="button" data-draw-type="Circle">绘制圆</button>
+          <!-- 编辑图形：选择并拖动已有图形的顶点。 -->
+          <button class="action-btn" id="editDrawingBtn" type="button">编辑图形</button>
+          <!-- 取消选择：清除选中状态，不删除图形。 -->
+          <button class="action-btn" id="clearSelectionBtn" type="button">取消选择</button>
+          <!-- 删除选中：删除当前选中的绘制图形。 -->
+          <button class="action-btn danger" id="deleteSelectedBtn" type="button">删除选中</button>
+          <!-- 清空图形：删除全部绘制图形，不影响测量结果。 -->
+          <button class="action-btn danger" id="clearDrawingsBtn" type="button">清空图形</button>
+        </div>
+        <div class="divider"></div><div class="section-label">图形样式</div>
+        <div class="style-controls">
+          <!-- 边框颜色：设置选中图形或默认绘制图形的边框色。 -->
+          <label class="style-field" for="drawingStrokeColor"><span>边框颜色</span><input id="drawingStrokeColor" type="color" value="#ffcc33" /></label>
+          <!-- 边框宽度：设置选中图形或默认绘制图形的线宽。 -->
+          <label class="style-field" for="drawingStrokeWidth"><span>边框宽度</span><span class="style-value" id="drawingStrokeWidthValue">2 px</span><input id="drawingStrokeWidth" type="range" min="1" max="10" step="1" value="2" /></label>
+          <!-- 填充颜色：设置选中图形或默认绘制图形的填充色。 -->
+          <label class="style-field" for="drawingFillColor"><span>填充颜色</span><input id="drawingFillColor" type="color" value="#ffcc33" /></label>
+          <!-- 填充透明度：设置选中图形或默认绘制图形的透明度。 -->
+          <label class="style-field" for="drawingFillOpacity"><span>填充透明度</span><span class="style-value" id="drawingFillOpacityValue">20%</span><input id="drawingFillOpacity" type="range" min="0" max="1" step="0.05" value="0.2" /></label>
+        </div>
+        <div class="divider"></div><div class="section-label">测量结果 <span id="resultCount">0</span></div>
+        <div class="results" id="results"><div class="empty">完成一次测量后，结果会显示在这里。</div></div>
+        <!-- 清空全部结果：删除所有测量记录和测量图形。 -->
+        <button class="clear-btn" id="clearAll" disabled>清空全部结果</button>
+      </div>
+      <footer class="status"><div class="status-row"><span class="dot"></span><strong>地图服务在线</strong></div><p id="statusText">当前视图：成都 · EPSG:4326</p></footer>
+    </aside>
+    <main class="workspace"><div id="map" class="map"></div><div class="map-topbar"><!-- 移动端功能：打开侧栏抽屉。 --><button class="mobile-toggle" id="menuBtn" aria-expanded="false">☰ 功能</button><div class="map-title"><strong>空间数据总览</strong><span>天地图影像 · 成都视图</span></div><form class="search-box" id="searchBox" role="search"><input id="searchInput" type="search" placeholder="搜索地名、道路或行政区" autocomplete="off" /><!-- 搜索：提交地名并定位地图。 --><button id="searchButton" type="submit">搜索</button><span id="searchMessage" class="search-message" role="status"></span></form></div><div class="map-float">EPSG:4326</div><div class="map-bottom"><div class="coords" id="coords">经度 —　纬度 —</div><div class="scale" id="scale"></div></div><div class="toast" id="toast" role="status"></div></main>
+  </div>
+    <script>
+      // Vite 会在构建时注入本地环境变量；仓库中只保留空值占位。
+      const amapWebKey = "%VITE_AMAP_WEB_KEY%";
+      window.__MAP_CONFIG__ = {
+        AMAP_WEB_KEY: amapWebKey === "%VITE_AMAP_WEB_KEY%" ? "" : amapWebKey
+      };
+  </script>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
