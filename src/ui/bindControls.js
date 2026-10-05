@@ -9,6 +9,7 @@ export const bindControls = ({
   drawings,
   exporter,
   search,
+  chapter7,
   toast,
   initialState = {},
   onSave,
@@ -142,6 +143,24 @@ export const bindControls = ({
   document.getElementById("clearSelectionBtn").onclick = drawings.clearSelection;
   document.getElementById("deleteSelectedBtn").onclick = drawings.deleteSelected;
   document.getElementById("clearDrawingsBtn").onclick = drawings.clear;
+
+  // 将侧栏上的 data-chapter7 操作映射到第七章控制器公开方法。
+  const chapter7Actions = {
+    "vector-markers": chapter7.enableVectorMarkers,
+    "overlay-markers": chapter7.enableOverlayMarkers,
+    clusters: chapter7.addClusters,
+    projection: chapter7.openProjectionPanel,
+    linkage: chapter7.openLinkagePanel,
+    heatmap: chapter7.toggleHeatmap,
+    hotspot: chapter7.startHotspotDraw,
+    charts: chapter7.renderCharts,
+  };
+  document.querySelectorAll("[data-chapter7]").forEach((button) => {
+    const action = chapter7Actions[button.dataset.chapter7];
+    if (!action) return;
+    button.disabled = false;
+    button.onclick = action;
+  });
 
   document.getElementById("clearAll").onclick = () => {
     measurements.clear();

@@ -8,6 +8,7 @@ import { createMeasurementController } from "./features/measurements";
 import { createDrawingController } from "./features/drawings";
 import { createMapExporter } from "./features/export";
 import { createSearchController } from "./features/search";
+import { createChapter7Controller } from "./features/chapter7";
 import { bindControls } from "./ui/bindControls";
 
 // 所有模块共用同一个轻量提示函数，避免重复实现提示框逻辑。
@@ -62,9 +63,11 @@ const drawings = createDrawingController({
 });
 const exporter = createMapExporter({ map, toast });
 const search = createSearchController({ map, amapKey: mapConfig.amapKey, toast });
+// 第七章控制器只管理新增的专题图层和临时面板，不改变既有测量/绘图控制器。
+const chapter7 = createChapter7Controller({ map, layers, toast });
 // 先恢复数据，再绑定按钮，这样恢复过程不会被误认为用户操作。
 measurements.restore(savedState.measurements);
 drawings.restore(savedState.drawings);
 // 最后由 UI 装配器统一连接所有按钮和地图事件。
-controls = bindControls({ map, layers, measurements, drawings, exporter, search, toast, initialState: savedState, onSave: saveWorkspaceState });
+controls = bindControls({ map, layers, measurements, drawings, exporter, search, chapter7, toast, initialState: savedState, onSave: saveWorkspaceState });
 saveWorkspaceState();

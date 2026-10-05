@@ -7,13 +7,98 @@ import VectorSource from "ol/source/Vector";
 import GeoJSON from "ol/format/GeoJSON";
 import KML from "ol/format/KML";
 import { Circle as CircleStyle, Fill, Stroke, Style } from "ol/style";
-import { get as getProjection } from "ol/proj";
+import Projection from "ol/proj/Projection";
+import {
+  addCoordinateTransforms,
+  addProjection,
+  fromLonLat,
+  get as getProjection,
+  toLonLat,
+} from "ol/proj";
 import TileGrid from "ol/tilegrid/TileGrid";
 import { getTopLeft, getWidth } from "ol/extent";
 import { mapConfig } from "../config/mapConfig";
 
-// 百度瓦片的行列方向与标准 XYZ 不同，需要在这里转换坐标。
+const BAIDU_PROJECTION_CODE = "BD-09-MERCATOR";
+const earthRadius = 6378137;
+
+const outOfChina = (longitude, latitude) => (
+  longitude < 72.004 || longitude > 137.8347 || latitude < 0.8293 || latitude > 55.8271
+);
+
+const transformLatitude = (longitude, latitude) => {
+  let value = -100 + 2 * longitude + 3 * latitude + 0.2 * latitude ** 2;
+  value += 0.1 * longitude * latitude + 0.2 * Math.sqrt(Math.abs(longitude));
+  value += (20 * Math.sin(6 * longitude * Math.PI) + 20 * Math.sin(2 * longitude * Math.PI)) * 2 / 3;
+  value += (20 * Math.sin(latitude * Math.PI) + 40 * Math.sin(latitude * Math.PI / 3)) * 2 / 3;
+  value += (160 * Math.sin(latitude * Math.PI / 12) + 320 * Math.sin(latitude * Math.PI / 30)) * 2 / 3;
+  return value;
+};
+
+const transformLongitude = (longitude, latitude) => {
+  let value = 300 + longitude + 2 * latitude + 0.1 * longitude ** 2;
+  value += 0.1 * longitude * latitude + 0.1 * Math.sqrt(Math.abs(longitude));
+  value += (20 * Math.sin(6 * longitude * Math.PI) + 20 * Math.sin(2 * longitude * Math.PI)) * 2 / 3;
+  value += (20 * Math.sin(longitude * Math.PI) + 40 * Math.sin(longitude * Math.PI / 3)) * 2 / 3;
+  value += (150 * Math.sin(longitude * Math.PI / 12) + 300 * Math.sin(longitude * Math.PI / 30)) * 2 / 3;
+  return value;
+};
+
+const wgs84ToGcj02 = ([longitude, latitude]) => {
+  if (outOfChina(longitude, latitude)) return [longitude, latitude];
+  const offsetLatitude = transformLatitude(longitude - 105, latitude - 35);
+  const offsetLongitude = transformLongitude(longitude - 105, latitude - 35);
+  const latitudeRadians = latitude / 180 * Math.PI;
+  const magic = 1 - 0.006693421622965943 * Math.sin(latitudeRadians) ** 2;
+  const sqrtMagic = Math.sqrt(magic);
+  return [
+    longitude + (offsetLongitude * 180) / (6378245 * 180 / Math.PI / sqrtMagic * Math.cos(latitudeRadians)),
+    latitude + (offsetLatitude * 180) / (6378245 * (1 - 0.006693421622965943) / (magic * sqrtMagic) * 180 / Math.PI),
+  ];
+};
+
+const gcj02ToWgs84 = ([longitude, latitude]) => {
+  if (outOfChina(longitude, latitude)) return [longitude, latitude];
+  const gcj = wgs84ToGcj02([longitude, latitude]);
+  return [longitude * 2 - gcj[0], latitude * 2 - gcj[1]];
+};
+
+const gcj02ToBd09 = ([longitude, latitude]) => {
+  const radius = Math.sqrt(longitude ** 2 + latitude ** 2) + 0.00002 * Math.sin(latitude * Math.PI);
+  const angle = Math.atan2(latitude, longitude) + 0.000003 * Math.cos(longitude * Math.PI);
+  return [radius * Math.cos(angle) + 0.0065, radius * Math.sin(angle) + 0.006];
+};
+
+const bd09ToGcj02 = ([longitude, latitude]) => {
+  const adjustedLongitude = longitude - 0.0065;
+  const adjustedLatitude = latitude - 0.006;
+  const radius = Math.sqrt(adjustedLongitude ** 2 + adjustedLatitude ** 2) - 0.00002 * Math.sin(adjustedLatitude * Math.PI);
+  const angle = Math.atan2(adjustedLatitude, adjustedLongitude) - 0.000003 * Math.cos(adjustedLongitude * Math.PI);
+  return [radius * Math.cos(angle), radius * Math.sin(angle)];
+};
+
+const wgs84ToBd09 = (coordinate) => gcj02ToBd09(wgs84ToGcj02(coordinate));
+const bd09ToWgs84 = (coordinate) => gcj02ToWgs84(bd09ToGcj02(coordinate));
+const toBaiduMercator = (coordinate) => fromLonLat(wgs84ToBd09(toLonLat(coordinate)));
+const fromBaiduMercator = (coordinate) => fromLonLat(bd09ToWgs84(toLonLat(coordinate)));
+
+const baiduProjection = new Projection({
+  code: BAIDU_PROJECTION_CODE,
+  units: "m",
+  extent: getProjection("EPSG:3857").getExtent(),
+});
+addProjection(baiduProjection);
+addCoordinateTransforms("EPSG:3857", baiduProjection, toBaiduMercator, fromBaiduMercator);
+
 const createBaiduSource = () => new XYZ({
+  projection: baiduProjection,
+  tileGrid: new TileGrid({
+    origin: [-20037508.342789244, 20037508.342789244],
+    resolutions: Array.from(
+      { length: 19 },
+      (_, zoom) => (2 * Math.PI * earthRadius) / (256 * 2 ** zoom),
+    ),
+  }),
   wrapX: true,
   crossOrigin: "anonymous",
   tileUrlFunction: ([z, x, y]) => {
@@ -213,4 +298,3 @@ export const createLayers = () => {
     overviewLayers,
   };
 };
-

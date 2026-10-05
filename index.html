@@ -95,6 +95,18 @@
           <!-- 填充透明度：设置选中图形或默认绘制图形的透明度。 -->
           <label class="style-field" for="drawingFillOpacity"><span>填充透明度</span><span class="style-value" id="drawingFillOpacityValue">20%</span><input id="drawingFillOpacity" type="range" min="0" max="1" step="0.05" value="0.2" /></label>
         </div>
+        <!-- 第七章专题工具：按钮只声明 data-chapter7，具体行为由 bindControls 装配。 -->
+        <div class="divider"></div><div class="section-label">第七章高级应用</div>
+        <div class="chapter7-tools" role="group" aria-label="第七章高级应用">
+          <button class="action-btn" type="button" data-chapter7="vector-markers" disabled>图文标注</button>
+          <button class="action-btn" type="button" data-chapter7="overlay-markers" disabled>Overlay 标注</button>
+          <button class="action-btn" type="button" data-chapter7="clusters" disabled>聚合标注</button>
+          <button class="action-btn" type="button" data-chapter7="projection" disabled>投影对照</button>
+          <button class="action-btn" type="button" data-chapter7="linkage" disabled>视图联动</button>
+          <button class="action-btn" type="button" data-chapter7="heatmap" disabled>热力图</button>
+          <button class="action-btn" type="button" data-chapter7="hotspot" disabled>热区绘制</button>
+          <button class="action-btn" type="button" data-chapter7="charts" disabled>统计图</button>
+        </div>
         <div class="divider"></div><div class="section-label">测量结果 <span id="resultCount">0</span></div>
         <div class="results" id="results"><div class="empty">完成一次测量后，结果会显示在这里。</div></div>
         <!-- 清空全部结果：删除所有测量记录和测量图形。 -->
@@ -102,7 +114,8 @@
       </div>
       <footer class="status"><div class="status-row"><span class="dot"></span><strong>地图服务在线</strong></div><p id="statusText">当前视图：成都 · EPSG:4326</p></footer>
     </aside>
-    <main class="workspace"><div id="map" class="map"></div><div class="map-topbar"><!-- 移动端功能：打开侧栏抽屉。 --><button class="mobile-toggle" id="menuBtn" aria-expanded="false">☰ 功能</button><div class="map-title"><strong>空间数据总览</strong><span>天地图影像 · 成都视图</span></div><form class="search-box" id="searchBox" role="search"><input id="searchInput" type="search" placeholder="搜索地名、道路或行政区" autocomplete="off" /><!-- 搜索：提交地名并定位地图。 --><button id="searchButton" type="submit">搜索</button><span id="searchMessage" class="search-message" role="status"></span></form></div><div class="map-float">EPSG:4326</div><div class="map-bottom"><div class="coords" id="coords">经度 —　纬度 —</div><div class="scale" id="scale"></div></div><div class="toast" id="toast" role="status"></div></main>
+    <!-- Popup 和临时面板都由第七章控制器动态填充，并在关闭时清理内容。 -->
+    <main class="workspace"><div id="map" class="map"></div><div id="chapter7Popup" class="chapter7-popup" role="dialog" aria-live="polite" hidden><button id="chapter7PopupClose" class="chapter7-popup-close" type="button" aria-label="关闭标注信息">×</button><div id="chapter7PopupContent"></div></div><div id="chapter7Panel" class="chapter7-panel" hidden><div class="chapter7-panel-header"><strong id="chapter7PanelTitle">第七章高级应用</strong><button id="chapter7PanelClose" class="chapter7-popup-close" type="button" aria-label="关闭面板">×</button></div><div id="chapter7PanelContent"></div></div><div class="map-topbar"><!-- 移动端功能：打开侧栏抽屉。 --><button class="mobile-toggle" id="menuBtn" aria-expanded="false">☰ 功能</button><div class="map-title"><strong>空间数据总览</strong><span>天地图影像 · 成都视图</span></div><form class="search-box" id="searchBox" role="search"><input id="searchInput" type="search" placeholder="搜索地名、道路或行政区" autocomplete="off" /><!-- 搜索：提交地名并定位地图。 --><button id="searchButton" type="submit">搜索</button><span id="searchMessage" class="search-message" role="status"></span></form></div><div class="map-float">EPSG:4326</div><div class="map-bottom"><div class="coords" id="coords">经度 —　纬度 —</div><div class="scale" id="scale"></div></div><div class="toast" id="toast" role="status"></div></main>
   </div>
     <script>
       // Vite 会在构建时注入本地环境变量；仓库中只保留空值占位。
