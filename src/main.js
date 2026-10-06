@@ -9,6 +9,7 @@ import { createDrawingController } from "./features/drawings";
 import { createMapExporter } from "./features/export";
 import { createSearchController } from "./features/search";
 import { createChapter7Controller } from "./features/chapter7";
+import { createApiClient } from "./api/client";
 import { bindControls } from "./ui/bindControls";
 
 // 所有模块共用同一个轻量提示函数，避免重复实现提示框逻辑。
@@ -26,8 +27,12 @@ if (savedState.drawingStyle) {
   Object.assign(layers.drawingStyleState, savedState.drawingStyle);
 }
 let controls;
+const api = createApiClient();
+// 由下方在探测后端后赋值；恢复数据阶段保持空操作，避免把刚读出的数据又写回数据库。
+let syncWorkspaceToDatabase = () => {};
 // 将各控制器的运行时状态拼成一个普通对象，再交给状态模块保存。
 const saveWorkspaceState = () => {
+  syncWorkspaceToDatabase();
   workspace.save({
     baseMode: controls?.getBaseMode() || savedState.baseMode || "imagery",
     layers: {
@@ -41,6 +46,8 @@ const saveWorkspaceState = () => {
     sidebarCollapsed: document
       .getElementById("sidebar")
       .classList.contains("collapsed"),
+    // 记录侧栏中处于展开状态的分组，刷新后保持一致。
+    openSections: [...document.querySelectorAll(".sidebar-section[open]")].map((section) => section.dataset.section),
     measurements: measurements.getState(),
     drawingStyle: { ...layers.drawingStyleState },
     drawings: drawings.getState(),
@@ -63,11 +70,43 @@ const drawings = createDrawingController({
 });
 const exporter = createMapExporter({ map, toast });
 const search = createSearchController({ map, amapKey: mapConfig.amapKey, toast });
+
+// 后端可用时，测量和绘图结果改存 PostgreSQL（localStorage 仍保存界面状态）。
+// 每次变更后延迟 600ms 再整体同步，避免拖动编辑时频繁请求。
+const syncTimers = {};
+const scheduleSync = (key, save) => {
+  if (!api.available) return;
+  clearTimeout(syncTimers[key]);
+  syncTimers[key] = setTimeout(() => {
+    save().catch((error) => toast(`数据库同步失败：${error.message}`));
+  }, 600);
+};
+syncWorkspaceToDatabase = () => {
+  scheduleSync("measurements", () => api.workspace.saveMeasurements(measurements.getState()));
+  scheduleSync("drawings", () => api.workspace.saveDrawings(drawings.getState()));
+};
+
+// 先探测后端，再恢复数据并创建第七章控制器，这样各模块从一开始就知道数据存在哪里。
+const databaseOnline = await api.detect();
+document.getElementById("storageStatus").textContent = databaseOnline ? "数据库：PostgreSQL 已连接" : "数据库：未连接，使用浏览器本地存储";
+document.getElementById("storageStatus").classList.toggle("offline", !databaseOnline);
 // 第七章控制器只管理新增的专题图层和临时面板，不改变既有测量/绘图控制器。
-const chapter7 = createChapter7Controller({ map, layers, toast });
+const chapter7 = createChapter7Controller({ map, layers, toast, api });
+let initialMeasurements = savedState.measurements;
+let initialDrawings = savedState.drawings;
+if (databaseOnline) {
+  try {
+    const [dbMeasurements, dbDrawings] = await Promise.all([api.workspace.measurements(), api.workspace.drawings()]);
+    // 首次连上数据库时库是空的：沿用本地已有数据，末尾的 saveWorkspaceState() 会把它们迁移进数据库。
+    if (dbMeasurements.length || !initialMeasurements?.length) initialMeasurements = dbMeasurements;
+    if (dbDrawings.length || !initialDrawings?.length) initialDrawings = dbDrawings;
+  } catch (error) {
+    toast(`读取数据库失败，已使用本地数据：${error.message}`);
+  }
+}
 // 先恢复数据，再绑定按钮，这样恢复过程不会被误认为用户操作。
-measurements.restore(savedState.measurements);
-drawings.restore(savedState.drawings);
+measurements.restore(initialMeasurements);
+drawings.restore(initialDrawings);
 // 最后由 UI 装配器统一连接所有按钮和地图事件。
 controls = bindControls({ map, layers, measurements, drawings, exporter, search, chapter7, toast, initialState: savedState, onSave: saveWorkspaceState });
 saveWorkspaceState();

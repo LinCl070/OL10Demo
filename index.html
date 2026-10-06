@@ -12,7 +12,9 @@
     <aside class="sidebar" id="sidebar" aria-label="GIS 功能仪表盘">
       <header class="brand"><div class="brand-row"><div class="brand-mark">A</div><div class="brand-copy"><h1>Atlas GIS</h1><p>空间分析工作台</p></div></div><!-- 最小化工作台：折叠侧栏并扩大地图区域。 --><button class="sidebar-collapse" id="sidebarCollapse" type="button" aria-label="最小化工作台" aria-expanded="true" title="最小化工作台"><span aria-hidden="true">‹</span></button></header>
       <div class="sidebar-scroll">
-        <div class="section-label">地图导航</div>
+        <!-- 侧栏按"浏览 → 分析 → 编辑 → 专题 → 输出"分组；每组是可折叠的 details，展开状态由 bindControls 记忆。 -->
+        <details class="sidebar-section" data-section="navigation" open>
+        <summary class="section-label">地图导航</summary>
         <div class="od-stack">
           <!-- 放大地图：提高当前视图缩放级别。 -->
           <button class="tool-btn" id="zoomIn"><span class="tool-icon">＋</span><span>放大地图</span><span class="hint">+</span></button>
@@ -21,16 +23,10 @@
           <!-- 回到成都：恢复成都中心点和默认缩放。 -->
           <button class="tool-btn" id="home"><span class="tool-icon">⌂</span><span>回到成都</span><span class="hint">定位</span></button>
         </div>
-        <div class="divider"></div><div class="section-label">空间测量</div>
-        <div class="od-stack">
-          <!-- 测量距离：在地图上绘制折线并计算长度。 -->
-          <button class="tool-btn" data-measure="distance"><span class="tool-icon">⌁</span><span>测量距离</span><span class="hint">线</span></button>
-          <!-- 测量面积：在地图上绘制面并计算面积。 -->
-          <button class="tool-btn" data-measure="area"><span class="tool-icon">▱</span><span>测量面积</span><span class="hint">面</span></button>
-          <!-- 测量角度：连续选取三个点计算夹角。 -->
-          <button class="tool-btn" data-measure="angle"><span class="tool-icon">∠</span><span>测量角度</span><span class="hint">3点</span></button>
-        </div>
-        <div class="divider"></div><div class="section-label">底图切换</div>
+        </details>
+        <details class="sidebar-section" data-section="layers" open>
+        <summary class="section-label">底图与图层</summary>
+        <div class="section-sublabel">底图切换</div>
         <div class="base-switch" role="group" aria-label="底图切换">
           <!-- 影像底图：显示天地图影像与标注。 -->
           <button class="base-btn active" id="imageryBaseBtn" type="button">影像底图</button>
@@ -43,7 +39,7 @@
           <!-- 百度底图：显示百度地图标注底图。 -->
           <button class="base-btn" id="baiduBaseBtn" type="button">百度底图</button>
         </div>
-        <div class="divider"></div><div class="section-label">图层控制</div>
+        <div class="section-sublabel">图层控制</div>
         <div class="od-stack">
           <!-- 省级行政区：切换 GeoServer 省级行政区图层。 -->
           <button class="layer-row on" id="chinaToggle"><span class="tool-icon">▧</span><span>省级行政区</span><span class="switch" aria-hidden="true"><i></i></span></button>
@@ -58,14 +54,35 @@
           <!-- 地震数据：切换地震 KML 点图层。 -->
           <button class="layer-row on" id="earthquakeToggle"><span class="tool-icon">◎</span><span>地震数据</span><span class="switch" aria-hidden="true"><i></i></span></button>
         </div>
-        <div class="divider"></div><div class="section-label">地图输出</div>
-        <div class="action-grid" role="group" aria-label="地图输出">
-          <!-- 导出图片：下载当前地图容器为 PNG。 -->
-          <button class="action-btn" id="exportImageBtn" type="button">导出图片</button>
-          <!-- 导出 PDF：下载当前地图容器为 PDF。 -->
-          <button class="action-btn" id="exportPdfBtn" type="button">导出 PDF</button>
+        </details>
+        <!-- 第七章专题工具：按钮只声明 data-chapter7，具体行为由 bindControls 装配。 -->
+        <details class="sidebar-section" data-section="views">
+        <summary class="section-label">多视图 <span class="section-tag">7.2–7.3</span></summary>
+        <div class="action-grid compact" role="group" aria-label="多视图">
+          <!-- 投影转换：并排对照 EPSG:4326 与 EPSG:3857 地图。 -->
+          <button class="action-btn" type="button" data-chapter7="projection" disabled>投影对照</button>
+          <!-- 视图联动：两个共享 View 的地图同步拖动缩放。 -->
+          <button class="action-btn" type="button" data-chapter7="linkage" disabled>视图联动</button>
         </div>
-        <div class="divider"></div><div class="section-label">图形绘制</div>
+        </details>
+        <details class="sidebar-section" data-section="measure" open>
+        <summary class="section-label">空间测量 <span class="section-count" id="resultCount">0</span></summary>
+        <div class="od-stack">
+          <!-- 测量距离：在地图上绘制折线并计算长度。 -->
+          <button class="tool-btn" data-measure="distance"><span class="tool-icon">⌁</span><span>测量距离</span><span class="hint">线</span></button>
+          <!-- 测量面积：在地图上绘制面并计算面积。 -->
+          <button class="tool-btn" data-measure="area"><span class="tool-icon">▱</span><span>测量面积</span><span class="hint">面</span></button>
+          <!-- 测量角度：连续选取三个点计算夹角。 -->
+          <button class="tool-btn" data-measure="angle"><span class="tool-icon">∠</span><span>测量角度</span><span class="hint">3点</span></button>
+        </div>
+        <!-- 测量结果紧跟测量工具，完成测量后无需滚动到底部查看。 -->
+        <div class="section-sublabel">测量结果</div>
+        <div class="results" id="results"><div class="empty">完成一次测量后，结果会显示在这里。</div></div>
+        <!-- 清空全部结果：删除所有测量记录和测量图形。 -->
+        <button class="clear-btn" id="clearAll" disabled>清空全部结果</button>
+        </details>
+        <details class="sidebar-section" data-section="drawing">
+        <summary class="section-label">图形绘制</summary>
         <div class="action-grid" role="group" aria-label="图形绘制">
           <!-- 绘制点：在地图上新增点要素。 -->
           <button class="action-btn" type="button" data-draw-type="Point">绘制点</button>
@@ -84,7 +101,7 @@
           <!-- 清空图形：删除全部绘制图形，不影响测量结果。 -->
           <button class="action-btn danger" id="clearDrawingsBtn" type="button">清空图形</button>
         </div>
-        <div class="divider"></div><div class="section-label">图形样式</div>
+        <div class="section-sublabel">图形样式</div>
         <div class="style-controls">
           <!-- 边框颜色：设置选中图形或默认绘制图形的边框色。 -->
           <label class="style-field" for="drawingStrokeColor"><span>边框颜色</span><input id="drawingStrokeColor" type="color" value="#ffcc33" /></label>
@@ -95,24 +112,40 @@
           <!-- 填充透明度：设置选中图形或默认绘制图形的透明度。 -->
           <label class="style-field" for="drawingFillOpacity"><span>填充透明度</span><span class="style-value" id="drawingFillOpacityValue">20%</span><input id="drawingFillOpacity" type="range" min="0" max="1" step="0.05" value="0.2" /></label>
         </div>
-        <!-- 第七章专题工具：按钮只声明 data-chapter7，具体行为由 bindControls 装配。 -->
-        <div class="divider"></div><div class="section-label">第七章高级应用</div>
-        <div class="chapter7-tools" role="group" aria-label="第七章高级应用">
-          <button class="action-btn" type="button" data-chapter7="vector-markers" disabled>图文标注</button>
-          <button class="action-btn" type="button" data-chapter7="overlay-markers" disabled>Overlay 标注</button>
-          <button class="action-btn" type="button" data-chapter7="clusters" disabled>聚合标注</button>
-          <button class="action-btn" type="button" data-chapter7="projection" disabled>投影对照</button>
-          <button class="action-btn" type="button" data-chapter7="linkage" disabled>视图联动</button>
+        </details>
+        <details class="sidebar-section" data-section="markers">
+        <summary class="section-label">地图标注 <span class="section-tag">7.1</span></summary>
+        <!-- 图文 / Overlay / 聚合三种预加载标注互斥，按单选样式展示，再次点击可关闭。 -->
+        <div class="base-switch marker-mode-switch" role="group" aria-label="预加载标注方式">
+          <button class="base-btn" type="button" data-chapter7="vector-markers" data-marker-mode="vector" aria-pressed="false" disabled>图文标注</button>
+          <button class="base-btn" type="button" data-chapter7="overlay-markers" data-marker-mode="overlay" aria-pressed="false" disabled>Overlay 标注</button>
+          <button class="base-btn" type="button" data-chapter7="clusters" data-marker-mode="cluster" aria-pressed="false" disabled>聚合标注</button>
+        </div>
+        <!-- 交互式标注：用户单击地图添加自定义标注，可与上面任一模式同时使用。 -->
+        <button class="action-btn full-width" type="button" data-chapter7="user-markers" disabled>交互式标注（点击地图添加）</button>
+        </details>
+        <details class="sidebar-section" data-section="thematic">
+        <summary class="section-label">专题分析 <span class="section-tag">7.4–7.6</span></summary>
+        <div class="action-grid compact" role="group" aria-label="专题分析">
+          <!-- 热力图：基于地震 KML 的震级密度热力图。 -->
           <button class="action-btn" type="button" data-chapter7="heatmap" disabled>热力图</button>
-          <button class="action-btn" type="button" data-chapter7="hotspot" disabled>热区绘制</button>
+          <!-- 热区：绘制带属性的区域标注，区别于"图形绘制"中的普通图形。 -->
+          <button class="action-btn" type="button" data-chapter7="hotspot" disabled>热区管理</button>
+          <!-- 统计图：在省份中心叠加 ECharts 图表。 -->
           <button class="action-btn" type="button" data-chapter7="charts" disabled>统计图</button>
         </div>
-        <div class="divider"></div><div class="section-label">测量结果 <span id="resultCount">0</span></div>
-        <div class="results" id="results"><div class="empty">完成一次测量后，结果会显示在这里。</div></div>
-        <!-- 清空全部结果：删除所有测量记录和测量图形。 -->
-        <button class="clear-btn" id="clearAll" disabled>清空全部结果</button>
+        </details>
+        <details class="sidebar-section" data-section="output">
+        <summary class="section-label">地图输出</summary>
+        <div class="action-grid" role="group" aria-label="地图输出">
+          <!-- 导出图片：下载当前地图容器为 PNG。 -->
+          <button class="action-btn" id="exportImageBtn" type="button">导出图片</button>
+          <!-- 导出 PDF：下载当前地图容器为 PDF。 -->
+          <button class="action-btn" id="exportPdfBtn" type="button">导出 PDF</button>
+        </div>
+        </details>
       </div>
-      <footer class="status"><div class="status-row"><span class="dot"></span><strong>地图服务在线</strong></div><p id="statusText">当前视图：成都 · EPSG:4326</p></footer>
+      <footer class="status"><div class="status-row"><span class="dot"></span><strong>地图服务在线</strong></div><p id="statusText">当前视图：成都 · EPSG:4326</p><!-- 数据库状态：由 main.js 在探测后端后填写。 --><p id="storageStatus" class="storage-status" role="status">数据库：检测中…</p></footer>
     </aside>
     <!-- Popup 和临时面板都由第七章控制器动态填充，并在关闭时清理内容。 -->
     <main class="workspace"><div id="map" class="map"></div><div id="chapter7Popup" class="chapter7-popup" role="dialog" aria-live="polite" hidden><button id="chapter7PopupClose" class="chapter7-popup-close" type="button" aria-label="关闭标注信息">×</button><div id="chapter7PopupContent"></div></div><div id="chapter7Panel" class="chapter7-panel" hidden><div class="chapter7-panel-header"><strong id="chapter7PanelTitle">第七章高级应用</strong><button id="chapter7PanelClose" class="chapter7-popup-close" type="button" aria-label="关闭面板">×</button></div><div id="chapter7PanelContent"></div></div><div class="map-topbar"><!-- 移动端功能：打开侧栏抽屉。 --><button class="mobile-toggle" id="menuBtn" aria-expanded="false">☰ 功能</button><div class="map-title"><strong>空间数据总览</strong><span>天地图影像 · 成都视图</span></div><form class="search-box" id="searchBox" role="search"><input id="searchInput" type="search" placeholder="搜索地名、道路或行政区" autocomplete="off" /><!-- 搜索：提交地名并定位地图。 --><button id="searchButton" type="submit">搜索</button><span id="searchMessage" class="search-message" role="status"></span></form></div><div class="map-float">EPSG:4326</div><div class="map-bottom"><div class="coords" id="coords">经度 —　纬度 —</div><div class="scale" id="scale"></div></div><div class="toast" id="toast" role="status"></div></main>

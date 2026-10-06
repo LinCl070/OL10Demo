@@ -148,6 +148,7 @@ export const bindControls = ({
   const chapter7Actions = {
     "vector-markers": chapter7.enableVectorMarkers,
     "overlay-markers": chapter7.enableOverlayMarkers,
+    "user-markers": chapter7.openUserMarkerPanel,
     clusters: chapter7.addClusters,
     projection: chapter7.openProjectionPanel,
     linkage: chapter7.openLinkagePanel,
@@ -161,6 +162,21 @@ export const bindControls = ({
     button.disabled = false;
     button.onclick = action;
   });
+  // 三种预加载标注是单选关系：高亮当前模式，与底图切换按钮的交互保持一致。
+  const markerModeButtons = document.querySelectorAll("[data-marker-mode]");
+  const syncMarkerModeButtons = (mode) => markerModeButtons.forEach((button) => {
+    const active = button.dataset.markerMode === mode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  syncMarkerModeButtons(chapter7.onMarkerModeChange(syncMarkerModeButtons));
+
+  // 侧栏分组可折叠：恢复上次的展开状态，切换时写回工作区。
+  const sections = document.querySelectorAll(".sidebar-section[data-section]");
+  if (Array.isArray(initialState.openSections)) {
+    sections.forEach((section) => { section.open = initialState.openSections.includes(section.dataset.section); });
+  }
+  sections.forEach((section) => section.addEventListener("toggle", save));
 
   document.getElementById("clearAll").onclick = () => {
     measurements.clear();

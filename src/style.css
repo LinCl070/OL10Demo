@@ -229,10 +229,105 @@ button {
   letter-spacing: 0.12em;
 }
 
-.divider {
-  height: 1px;
-  margin: 16px 8px;
-  background: #284258;
+/* 可折叠分组：summary 作为分组标题，展开时显示内容。 */
+.sidebar-section {
+  padding-bottom: 6px;
+  border-bottom: 1px solid #284258;
+}
+
+.sidebar-section > summary.section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 8px;
+  /* 分组标题需明显大于组内子标题（11px），形成清晰的层级。 */
+  color: #c4d4e0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  list-style: none;
+  border-radius: 5px;
+  user-select: none;
+  transition: color var(--ease);
+}
+
+.sidebar-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sidebar-section > summary::after {
+  margin-left: auto;
+  font-size: 10px;
+  content: "▸";
+  transition: transform var(--ease);
+}
+
+.sidebar-section[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.sidebar-section > summary:hover {
+  color: #fff;
+}
+
+.sidebar-section > summary:focus-visible {
+  outline: 2px solid #4dc1ed;
+  outline-offset: 2px;
+}
+
+.sidebar-section[open] {
+  padding-bottom: 14px;
+}
+
+/* 分组内的子标题，如"底图切换"、"测量结果"。 */
+.section-sublabel {
+  margin: 12px 8px 6px;
+  color: #6c8597;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.sidebar-section > summary + .section-sublabel {
+  margin-top: 0;
+}
+
+/* 标题右侧的教材章节号与计数徽标。 */
+.section-tag,
+.section-count {
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  border-radius: 8px;
+}
+
+.section-tag {
+  color: #6c8597;
+  border: 1px solid #2b5874;
+}
+
+.section-count {
+  color: #d6e2eb;
+  background: #193d54;
+}
+
+.action-grid.compact .action-btn {
+  min-height: 38px;
+  padding: 7px 8px;
+  font-size: 12px;
+}
+
+.action-btn.full-width {
+  width: 100%;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.base-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .status {
@@ -252,6 +347,15 @@ button {
   margin: 7px 0 0;
   color: #91a5b5;
   font-size: 12px;
+}
+
+/* 数据库连接状态：已连接为绿色，未连接（使用本地存储）为琥珀色。 */
+.storage-status {
+  color: #5fd3a0 !important;
+}
+
+.storage-status.offline {
+  color: #f1a52b !important;
 }
 
 .dot {
@@ -515,18 +619,6 @@ button {
 }
 
 /* 第七章：侧栏工具、临时地图面板、Popup 和统计图 Overlay。 */
-.chapter7-tools {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.chapter7-tools .action-btn {
-  min-height: 38px;
-  padding: 7px 8px;
-  font-size: 12px;
-}
-
 .chapter7-panel {
   position: absolute;
   z-index: 12;
@@ -578,6 +670,53 @@ button {
 .chapter7-popup-close:hover {
   color: var(--ink);
   background: #edf2f6;
+}
+
+.chapter7-popup-action {
+  margin-top: 8px;
+  padding: 4px 10px;
+  color: #c0392b;
+  font-size: 12px;
+  background: #fff;
+  border: 1px solid #f0c4be;
+  border-radius: 5px;
+}
+
+.chapter7-popup-action:hover {
+  background: #fdf0ee;
+}
+
+.chapter7-marker-list {
+  max-height: 180px;
+  margin: 10px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.chapter7-marker-list li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.chapter7-marker-locate {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 4px;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+}
+
+.chapter7-marker-locate:hover {
+  color: var(--blue);
 }
 
 .chapter7-panel p {

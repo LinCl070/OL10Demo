@@ -23,12 +23,14 @@ import { BarChart, LineChart, PieChart } from "echarts/charts";
 import { GridComponent, TitleComponent, TooltipComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { mapConfig } from "../config/mapConfig";
+import { createRecordStore } from "../api/recordStore";
 
 // 按需注册 ECharts 模块，避免打包完整库。
 echarts.use([BarChart, LineChart, PieChart, GridComponent, TitleComponent, TooltipComponent, CanvasRenderer]);
 
-// 热区只保存可序列化的业务数据，OpenLayers Feature/Overlay 不写入 localStorage。
+// 热区、标注只保存可序列化的业务数据（名称、说明、经纬度），OpenLayers Feature/Overlay 不写入存储。
 const HOTSPOT_STORAGE_KEY = "atlas-gis-hotspots-v1";
+const USER_MARKER_STORAGE_KEY = "atlas-gis-user-markers-v1";
 // 文档示例使用成都兴趣点，作为标注与聚合功能的稳定演示数据。
 const sampleMarkers = [
   { name: "天府广场", description: "成都城市中心示例标注", coordinate: [104.0658, 30.6574] },
@@ -43,7 +45,8 @@ const clusterPoints = Array.from({ length: 200 }, (_, index) => {
   const radius = 0.6 * Math.sqrt((index + 1) / 200);
   return [104.06 + radius * Math.cos(angle), 30.67 + radius * Math.sin(angle) * 0.8];
 });
-// 统计图示例数据（单位：亿元），数值参考各省公开统计公报，取整后仅供教学演示。
+// 统计图内置示例数据（单位：亿元），后端不可用时使用；数据库中的同一份数据见 server/src/main/resources/data.sql。
+// 数值参考各省公开统计公报，取整后仅供教学演示。
 const provinceGdp = {
   广东省: [129119, 135673, 141634],
   江苏省: [122876, 128222, 137008],
@@ -80,7 +83,7 @@ const parseMagnitude = (name) => {
   return match ? Number(match[1]) : Number.NaN;
 };
 
-export const createChapter7Controller = ({ map, toast }) => {
+export const createChapter7Controller = ({ map, toast, api }) => {
   // 页面容器由 index.html 提供，控制器只负责填充内容和管理生命周期。
   const panel = document.getElementById("chapter7Panel");
   const panelTitle = document.getElementById("chapter7PanelTitle");
@@ -125,15 +128,39 @@ export const createChapter7Controller = ({ map, toast }) => {
   });
   map.addLayer(clusterLayer);
 
+  // 用户交互式标注（7.1.1）：点击地图获取屏幕坐标并转换为地图坐标，在该位置添加标注。
+  // 后端可用时存 PostgreSQL（markers 表），否则存 localStorage；刷新后按经纬度重建 Feature。
+  const userMarkerSource = new VectorSource();
+  const userMarkerStyle = markerStyle.clone();
+  userMarkerStyle.setImage(new CircleStyle({ radius: 8, fill: new Fill({ color: "#e5484d" }), stroke: new Stroke({ color: "#fff", width: 2 }) }));
+  const userMarkerLayer = new VectorLayer({
+    source: userMarkerSource,
+    style: (feature) => {
+      const style = userMarkerStyle.clone();
+      style.getText().setText(feature.get("markerName"));
+      return style;
+    },
+  });
+  map.addLayer(userMarkerLayer);
+  const createUserMarker = ({ id, name, description, coordinate }) => new Feature({ geometry: new Point(fromLonLat(coordinate)), id, markerName: name, markerDescription: description, markerCoordinate: coordinate });
+  const markerStore = createRecordStore({ api, resource: "markers", storageKey: USER_MARKER_STORAGE_KEY, isValid: (item) => item?.id != null && Array.isArray(item.coordinate) });
+  const storageLabel = markerStore.backend === "database" ? "PostgreSQL 数据库" : "当前浏览器";
+
   const overlayMarkers = [];
   let currentPanelCleanup = () => {};
+  // 交互标注模式开启时，地图单击用于添加标注；面板通过 onUserMarkersChange 刷新列表。
+  let userMarkerMode = false;
+  let onUserMarkersChange = () => {};
   let heatmapLayer;
   let hotspotLayer;
   let hotspotSource;
   let hotspotDraw;
   let hotspotSelect;
   let hotspotHover;
-
+  // 异步读取已保存的标注；读完后刷新可能已打开的标注面板列表。
+  markerStore.list()
+    .then((items) => { userMarkerSource.addFeatures(items.map(createUserMarker)); onUserMarkersChange(); })
+    .catch((error) => toast(`标注读取失败：${error.message}`));
   // Popup 使用同一个 Overlay，通过替换 DOM 内容支持标注、聚合和热区详情。
   const closePopup = () => {
     popup.hidden = true;
@@ -152,14 +179,58 @@ export const createChapter7Controller = ({ map, toast }) => {
     const text = document.createElement("p");
     text.textContent = `${description}（${lonlat[0].toFixed(4)}, ${lonlat[1].toFixed(4)}）`;
     popupContent.append(title, text);
+    // 用户添加的标注在 Popup 中提供删除入口。
+    if (userMarkerSource.hasFeature(item)) {
+      const remove = document.createElement("button");
+      remove.className = "chapter7-popup-action";
+      remove.type = "button";
+      remove.textContent = "删除此标注";
+      remove.addEventListener("click", async () => { if (await removeUserMarker(item)) toast("标注已删除"); });
+      popupContent.append(remove);
+    }
     popup.hidden = false;
     popupOverlay.setPosition(coordinate);
   };
+  const removeUserMarker = async (feature) => {
+    try {
+      await markerStore.remove(feature.get("id"));
+    } catch (error) {
+      toast(`删除失败：${error.message}`);
+      return false;
+    }
+    userMarkerSource.removeFeature(feature);
+    closePopup();
+    onUserMarkersChange();
+    return true;
+  };
+  // 交互式标注：event.pixel 是屏幕像素坐标，经 getCoordinateFromPixel 转换为地图逻辑坐标（EPSG:3857），
+  // 再用 toLonLat 得到经纬度用于展示和存储。
+  const addUserMarkerAtPixel = async (pixel) => {
+    const coordinate = toLonLat(map.getCoordinateFromPixel(pixel));
+    const name = window.prompt(`在 (${coordinate[0].toFixed(4)}, ${coordinate[1].toFixed(4)}) 添加标注，请输入名称`, `标注 ${userMarkerSource.getFeatures().length + 1}`);
+    if (!name?.trim()) { toast("已取消添加标注"); return; }
+    const description = window.prompt("标注说明（可选）", "") || "用户添加的标注";
+    let saved;
+    try {
+      // 由存储层分配 id（数据库自增主键或本地时间戳），保存成功后再上图。
+      saved = await markerStore.create({ name: name.trim(), description, coordinate });
+    } catch (error) {
+      toast(`标注保存失败：${error.message}`);
+      return;
+    }
+    const feature = createUserMarker(saved);
+    userMarkerSource.addFeature(feature);
+    onUserMarkersChange();
+    showPopup(feature, feature.getGeometry().getCoordinates());
+    toast(`标注已保存到${storageLabel}`);
+  };
   // 同一个点击监听处理标注、聚合和热区：多点聚合放大到成员范围，其余要素弹出 Popup。
-  const isInteractiveLayer = (layer) => layer === markerLayer || layer === clusterLayer || layer === hotspotLayer;
+  const isInteractiveLayer = (layer) => layer === markerLayer || layer === clusterLayer || layer === hotspotLayer || layer === userMarkerLayer;
   const mapClickListener = (event) => {
     if (hotspotDraw || hotspotSelect) return;
     const feature = map.forEachFeatureAtPixel(event.pixel, (candidate) => candidate, { layerFilter: isInteractiveLayer });
+    // 交互标注模式下点击空白处添加标注；点到已有要素时仍然显示其 Popup。
+    if (userMarkerMode && !feature) { closePopup(); addUserMarkerAtPixel(event.pixel); return; }
     const members = feature?.get("features");
     if (members?.length > 1) {
       closePopup();
@@ -173,15 +244,20 @@ export const createChapter7Controller = ({ map, toast }) => {
   const cursorListener = (event) => {
     if (event.dragging) return;
     const hit = map.hasFeatureAtPixel(event.pixel, { layerFilter: isInteractiveLayer });
-    map.getTargetElement().style.cursor = hit ? "pointer" : "";
+    // 交互标注模式下空白处显示十字光标，提示可以点击添加。
+    map.getTargetElement().style.cursor = hit ? "pointer" : userMarkerMode ? "crosshair" : "";
   };
   map.on("pointermove", cursorListener);
 
-  // 三种标注模式互斥：矢量点、HTML Overlay 或聚合图层只显示一种。
+  // 三种标注模式互斥：矢量点、HTML Overlay 或聚合图层只显示一种；
+  // 模式变化通过 onMarkerModeChange 通知侧栏，用于高亮当前按钮。
+  let markerMode = "none";
+  let onMarkerModeChange = () => {};
   const setMarkerMode = (mode) => {
     closePopup();
+    markerMode = mode;
     markerLayer.setVisible(mode === "vector");
-    clusterLayer.setVisible(false);
+    clusterLayer.setVisible(mode === "cluster");
     overlayMarkers.forEach((overlay) => map.removeOverlay(overlay));
     overlayMarkers.length = 0;
     if (mode === "overlay") {
@@ -201,6 +277,14 @@ export const createChapter7Controller = ({ map, toast }) => {
         overlayMarkers.push(overlay);
       });
     }
+    onMarkerModeChange(mode);
+  };
+  // 再次点击当前模式即关闭（单选按钮可取消）。
+  const toggleMarkerMode = (mode, message) => {
+    if (markerMode === mode) { setMarkerMode("none"); closePanel(); toast("已关闭标注"); return false; }
+    setMarkerMode(mode);
+    toast(message);
+    return true;
   };
 
   // 面板切换前先执行上一个面板的清理函数，释放临时地图和事件。
@@ -218,11 +302,66 @@ export const createChapter7Controller = ({ map, toast }) => {
     currentPanelCleanup = builder(panelContent) || (() => {});
   };
 
+  // 交互式标注面板：开启后单击地图添加标注，列表中可定位或删除；关闭面板即退出添加模式。
+  const openUserMarkerPanel = () => {
+    openPanel("交互式标注", (container) => {
+      const hint = document.createElement("p");
+      hint.textContent = `开启后单击地图空白处添加标注，点击已有标注可查看 Popup 或删除。数据保存在${storageLabel}。`;
+      const toggle = document.createElement("button"); toggle.className = "action-btn"; toggle.type = "button";
+      const clear = document.createElement("button"); clear.className = "action-btn danger"; clear.type = "button"; clear.textContent = "清空全部标注";
+      const list = document.createElement("ul"); list.className = "chapter7-marker-list";
+      const setMode = (enabled) => {
+        userMarkerMode = enabled;
+        toggle.textContent = enabled ? "停止添加标注" : "开始添加标注";
+        toggle.setAttribute("aria-pressed", String(enabled));
+        if (!enabled) map.getTargetElement().style.cursor = "";
+      };
+      const renderList = () => {
+        const features = userMarkerSource.getFeatures();
+        if (!features.length) {
+          const empty = document.createElement("li"); empty.className = "chapter7-panel-note"; empty.textContent = "暂无标注";
+          list.replaceChildren(empty);
+          return;
+        }
+        list.replaceChildren(...features.map((feature) => {
+          const item = document.createElement("li");
+          const locate = document.createElement("button"); locate.type = "button"; locate.className = "chapter7-marker-locate";
+          const [lon, lat] = feature.get("markerCoordinate");
+          locate.textContent = `${feature.get("markerName")}（${lon.toFixed(3)}, ${lat.toFixed(3)}）`;
+          locate.addEventListener("click", () => {
+            const position = feature.getGeometry().getCoordinates();
+            map.getView().animate({ center: position, duration: 250 });
+            showPopup(feature, position);
+          });
+          const remove = document.createElement("button"); remove.type = "button"; remove.className = "chapter7-popup-close"; remove.textContent = "×";
+          remove.setAttribute("aria-label", `删除标注 ${feature.get("markerName")}`);
+          remove.addEventListener("click", async () => { if (await removeUserMarker(feature)) toast("标注已删除"); });
+          item.append(locate, remove);
+          return item;
+        }));
+      };
+      toggle.addEventListener("click", () => {
+        setMode(!userMarkerMode);
+        toast(userMarkerMode ? "请单击地图添加标注" : "已停止添加标注");
+      });
+      clear.addEventListener("click", () => {
+        if (!userMarkerSource.getFeatures().length || !window.confirm("确定清空全部用户标注吗？")) return;
+        markerStore.clear()
+          .then(() => { userMarkerSource.clear(); closePopup(); renderList(); toast("标注已清空"); })
+          .catch((error) => toast(`清空失败：${error.message}`));
+      });
+      onUserMarkersChange = renderList;
+      setMode(true);
+      renderList();
+      container.replaceChildren(hint, toggle, clear, list);
+      return () => { setMode(false); onUserMarkersChange = () => {}; };
+    });
+    toast("请单击地图添加标注");
+  };
+
   // 启用聚合后，点击多点聚合会 fit 到成员范围；单点继续走 Popup。
   const addClusters = () => {
-    setMarkerMode("none");
-    closePopup();
-    clusterLayer.setVisible(true);
+    if (!toggleMarkerMode("cluster", "已添加聚合标注")) return;
     map.getView().fit(clusterPointSource.getExtent(), { duration: 250, padding: [60, 60, 60, 60] });
     openPanel("聚合标注", (container) => {
       const text = document.createElement("p");
@@ -236,11 +375,10 @@ export const createChapter7Controller = ({ map, toast }) => {
       remove.className = "action-btn";
       remove.type = "button";
       remove.textContent = "移除聚合标注";
-      remove.addEventListener("click", () => { clusterLayer.setVisible(false); closePopup(); closePanel(); toast("已移除聚合标注"); });
+      remove.addEventListener("click", () => { setMarkerMode("none"); closePanel(); toast("已移除聚合标注"); });
       container.append(text, distance, remove);
       return () => {};
     });
-    toast("已添加聚合标注");
   };
 
   // 投影对照：两张地图都叠加天地图矢量底图 + 注记 + 省级 GeoJSON，
@@ -346,25 +484,24 @@ export const createChapter7Controller = ({ map, toast }) => {
     },
   });
   map.addLayer(hotspotLayer);
-  try {
-    const stored = JSON.parse(localStorage.getItem(HOTSPOT_STORAGE_KEY) || "[]");
-    stored.filter((item) => item?.id && Array.isArray(item.coordinates)).forEach((item) => hotspotSource.addFeature(new Feature({ geometry: new Polygon([item.coordinates.map((coordinate) => fromLonLat(coordinate))]), ...item })));
-  } catch { toast("本地热区数据无法读取，已使用空集合"); }
-  // 只把热区属性和经纬度坐标写入本地，刷新后再转换回 EPSG:3857。
-  const persistHotspots = () => {
-    const values = hotspotSource.getFeatures().map((feature) => ({ id: feature.get("id"), name: feature.get("name"), description: feature.get("description"), createdAt: feature.get("createdAt"), coordinates: feature.getGeometry().getCoordinates()[0].map((coordinate) => toLonLat(coordinate)) }));
-    localStorage.setItem(HOTSPOT_STORAGE_KEY, JSON.stringify(values));
-  };
+  // 热区经纬度在存储中为 EPSG:4326（数据库 geometry(Polygon, 4326)），上图前转换到 EPSG:3857（对应教材 transform 步骤）。
+  const hotspotStore = createRecordStore({ api, resource: "hotspots", storageKey: HOTSPOT_STORAGE_KEY, isValid: (item) => item?.id != null && Array.isArray(item.coordinates) });
+  const createHotspotFeature = (item) => new Feature({ geometry: new Polygon([item.coordinates.map((coordinate) => fromLonLat(coordinate))]), id: item.id, name: item.name, description: item.description, createdAt: item.createdAt });
+  let onHotspotsChange = () => {};
+  hotspotStore.list()
+    .then((items) => { hotspotSource.addFeatures(items.map(createHotspotFeature)); onHotspotsChange(); })
+    .catch((error) => toast(`热区读取失败：${error.message}`));
   const stopHotspotInteraction = () => { if (hotspotDraw) map.removeInteraction(hotspotDraw); if (hotspotSelect) map.removeInteraction(hotspotSelect); hotspotDraw = undefined; hotspotSelect = undefined; };
-  // Draw 完成后通过浏览器对话框补充属性，取消名称则回滚临时 Feature。
+  // Draw 完成后通过浏览器对话框补充属性，保存成功后用存储层返回的记录替换临时 Feature。
   const startHotspotDraw = () => {
-    openPanel("热区功能", (container) => {
-      const hint = document.createElement("p"); hint.textContent = "绘制多边形后输入热区名称和说明，数据只保存在当前浏览器。";
+    openPanel("热区管理", (container) => {
+      const hint = document.createElement("p"); hint.textContent = `绘制多边形后输入热区名称和说明，数据保存在${hotspotStore.backend === "database" ? "PostgreSQL 数据库" : "当前浏览器"}。`;
       const drawButton = document.createElement("button"); drawButton.className = "action-btn"; drawButton.type = "button"; drawButton.textContent = "开始绘制多边形";
       const deleteButton = document.createElement("button"); deleteButton.className = "action-btn"; deleteButton.type = "button"; deleteButton.textContent = "删除热区";
       const clearButton = document.createElement("button"); clearButton.className = "action-btn danger"; clearButton.type = "button"; clearButton.textContent = "清空热区";
       const status = document.createElement("p"); status.className = "chapter7-panel-note"; status.textContent = `当前热区：${hotspotSource.getFeatures().length}`;
       const refreshStatus = () => { status.textContent = `当前热区：${hotspotSource.getFeatures().length}`; };
+      onHotspotsChange = refreshStatus;
       drawButton.addEventListener("click", () => {
         stopHotspotInteraction();
         hotspotDraw = new Draw({ source: hotspotSource, type: "Polygon", style: hotspotStyle });
@@ -372,13 +509,24 @@ export const createChapter7Controller = ({ map, toast }) => {
         hotspotDraw.once("drawend", (event) => {
           // OpenLayers 先派发 drawend 再把要素加入 source，因此延后到下一轮任务再处理，
           // 否则取消时无法移除要素、保存时也会漏掉刚绘制的热区。
-          setTimeout(() => {
+          setTimeout(async () => {
             stopHotspotInteraction();
+            const sketch = event.feature;
             const name = window.prompt("热区名称", "新热区");
-            if (!name?.trim()) { hotspotSource.removeFeature(event.feature); refreshStatus(); toast("已取消保存热区"); return; }
-            const description = window.prompt("热区说明", "本地绘制热区") || "";
-            event.feature.setProperties({ id: `hotspot-${Date.now()}`, name: name.trim(), description, createdAt: new Date().toISOString() });
-            persistHotspots(); refreshStatus(); toast("热区已保存");
+            if (!name?.trim()) { hotspotSource.removeFeature(sketch); refreshStatus(); toast("已取消保存热区"); return; }
+            const description = window.prompt("热区说明", "") || "";
+            // 坐标转换为经纬度（EPSG:3857 -> EPSG:4326）后提交保存。
+            const coordinates = sketch.getGeometry().getCoordinates()[0].map((coordinate) => toLonLat(coordinate));
+            try {
+              const saved = await hotspotStore.create({ name: name.trim(), description, coordinates });
+              hotspotSource.removeFeature(sketch);
+              hotspotSource.addFeature(createHotspotFeature(saved));
+              toast("热区已保存");
+            } catch (error) {
+              hotspotSource.removeFeature(sketch);
+              toast(`热区保存失败：${error.message}`);
+            }
+            refreshStatus();
           }, 0);
         });
         toast("请在地图上连续点击绘制热区，双击结束");
@@ -387,16 +535,28 @@ export const createChapter7Controller = ({ map, toast }) => {
         stopHotspotInteraction();
         hotspotSelect = new Select({ layers: [hotspotLayer], style: hotspotHighlightStyle });
         map.addInteraction(hotspotSelect);
-        hotspotSelect.once("select", (event) => {
+        hotspotSelect.once("select", async (event) => {
           const selected = event.selected[0];
-          if (selected && window.confirm(`确定删除热区“${selected.get("name") || "未命名"}”吗？`)) { hotspotSource.removeFeature(selected); persistHotspots(); refreshStatus(); toast("热区已删除"); }
           stopHotspotInteraction();
+          if (!selected || !window.confirm(`确定删除热区“${selected.get("name") || "未命名"}”吗？`)) return;
+          try {
+            await hotspotStore.remove(selected.get("id"));
+            hotspotSource.removeFeature(selected);
+            refreshStatus(); toast("热区已删除");
+          } catch (error) { toast(`删除失败：${error.message}`); }
         });
         toast("请点击要删除的热区");
       });
-      clearButton.addEventListener("click", () => { if (hotspotSource.getFeatures().length && window.confirm("确定清空全部本地热区吗？")) { hotspotSource.clear(); persistHotspots(); refreshStatus(); toast("热区已清空"); } });
+      clearButton.addEventListener("click", async () => {
+        if (!hotspotSource.getFeatures().length || !window.confirm("确定清空全部热区吗？")) return;
+        try {
+          await hotspotStore.clear();
+          hotspotSource.clear();
+          refreshStatus(); toast("热区已清空");
+        } catch (error) { toast(`清空失败：${error.message}`); }
+      });
       container.replaceChildren(hint, drawButton, deleteButton, clearButton, status);
-      return stopHotspotInteraction;
+      return () => { stopHotspotInteraction(); onHotspotsChange = () => {}; };
     });
   };
   const hotspotHoverListener = (event) => {
@@ -411,11 +571,24 @@ export const createChapter7Controller = ({ map, toast }) => {
   map.on("pointermove", hotspotHoverListener);
 
   // 统计图：独立加载省级 GeoJSON，只渲染有 GDP 数据的省份，并在省份中心点叠加 ECharts 图表。
+  // GDP 数据优先从数据库（province_gdp 表）读取，后端不可用时使用内置示例数据。
+  let gdpData = provinceGdp;
+  let gdpSourceLabel = "内置示例数据";
+  const gdpReady = api?.available
+    ? api.provinceGdp()
+      .then((rows) => {
+        if (!rows.length) return;
+        gdpData = Object.fromEntries(rows.map((row) => [row.province, row.values]));
+        gdpSourceLabel = "PostgreSQL 数据库";
+        chartLayer.changed();
+      })
+      .catch((error) => toast(`GDP 数据读取失败，已使用内置数据：${error.message}`))
+    : Promise.resolve();
   const chartSource = new VectorSource({ url: "/province.geojson", format: new GeoJSON() });
   const chartLayer = new VectorLayer({
     source: chartSource,
     visible: false,
-    style: (feature) => (provinceGdp[feature.get("name")] ? hotspotStyle : undefined),
+    style: (feature) => (gdpData[feature.get("name")] ? hotspotStyle : undefined),
   });
   map.addLayer(chartLayer);
   const chartOverlays = [];
@@ -456,16 +629,17 @@ export const createChapter7Controller = ({ map, toast }) => {
     openPanel("统计图", (container) => {
       const row = document.createElement("div"); row.className = "chapter7-control-row"; row.innerHTML = '<span>图表类型</span><select><option value="Bar">柱状图</option><option value="Line">折线图</option><option value="Pie">饼图</option></select>';
       const select = row.querySelector("select");
-      const note = document.createElement("p"); note.className = "chapter7-panel-note"; note.textContent = `展示 ${Object.keys(provinceGdp).length} 个省市 2022–2024 年 GDP，数据为教学示例（取整）。`;
+      const note = document.createElement("p"); note.className = "chapter7-panel-note";
       const render = () => {
         clearChartOverlays();
-        const features = chartSource.getFeatures().filter((feature) => provinceGdp[feature.get("name")]);
+        note.textContent = `展示 ${Object.keys(gdpData).length} 个省市 2022–2024 年 GDP（数据来源：${gdpSourceLabel}，教学示例）。`;
+        const features = chartSource.getFeatures().filter((feature) => gdpData[feature.get("name")]);
         features.forEach((feature) => {
           const name = feature.get("name");
           const element = document.createElement("div"); element.className = "chapter7-chart-overlay";
           // 显式指定宽高，元素尚未挂到地图上时 ECharts 也能正确初始化。
           const chart = echarts.init(element, null, { width: 150, height: 112 });
-          chart.setOption(getChartOption(select.value, name, provinceGdp[name]));
+          chart.setOption(getChartOption(select.value, name, gdpData[name]));
           // 优先使用 GeoJSON 自带的 center 属性，缺失时退回到外包矩形中心。
           const center = feature.get("center");
           const position = Array.isArray(center) ? fromLonLat(center) : getCenter(feature.getGeometry().getExtent());
@@ -482,10 +656,13 @@ export const createChapter7Controller = ({ map, toast }) => {
       select.addEventListener("change", render);
       container.replaceChildren(row, note);
       chartLayer.setVisible(true);
-      // GeoJSON 在图层首次可见时才开始加载，加载完成后再渲染图表。
-      if (chartSource.getFeatures().length) render();
-      else chartSource.once("featuresloadend", render);
-      return () => { chartSource.un("featuresloadend", render); clearChartOverlays(); chartLayer.setVisible(false); };
+      // GeoJSON 在图层首次可见时才开始加载；等 GeoJSON 和 GDP 数据都就绪后再渲染图表。
+      let active = true;
+      const geojsonReady = chartSource.getFeatures().length
+        ? Promise.resolve()
+        : new Promise((resolve) => chartSource.once("featuresloadend", resolve));
+      Promise.all([geojsonReady, gdpReady]).then(() => { if (active) render(); });
+      return () => { active = false; clearChartOverlays(); chartLayer.setVisible(false); };
     });
   };
 
@@ -493,8 +670,11 @@ export const createChapter7Controller = ({ map, toast }) => {
   document.getElementById("chapter7PanelClose").addEventListener("click", closePanel);
   document.getElementById("chapter7PopupClose").addEventListener("click", closePopup);
   return {
-    enableVectorMarkers: () => { setMarkerMode("vector"); closePanel(); fitMarkers(); toast("已启用图文标注，点击标注查看 Popup"); },
-    enableOverlayMarkers: () => { setMarkerMode("overlay"); closePanel(); fitMarkers(); toast("已启用 Overlay 标注，点击标注查看 Popup"); },
+    enableVectorMarkers: () => { closePanel(); if (toggleMarkerMode("vector", "已启用图文标注，点击标注查看 Popup")) fitMarkers(); },
+    enableOverlayMarkers: () => { closePanel(); if (toggleMarkerMode("overlay", "已启用 Overlay 标注，点击标注查看 Popup")) fitMarkers(); },
+    // 侧栏订阅标注模式变化，返回当前模式以便初始化按钮状态。
+    onMarkerModeChange: (callback) => { onMarkerModeChange = callback; return markerMode; },
+    openUserMarkerPanel,
     addClusters,
     openProjectionPanel,
     openLinkagePanel,
@@ -504,7 +684,7 @@ export const createChapter7Controller = ({ map, toast }) => {
     destroy: () => {
       closePanel(); closePopup(); stopHotspotInteraction();
       map.un("singleclick", mapClickListener); map.un("pointermove", cursorListener); map.un("pointermove", hotspotHoverListener);
-      overlayMarkers.forEach((overlay) => map.removeOverlay(overlay)); map.removeOverlay(popupOverlay); map.removeLayer(markerLayer); map.removeLayer(clusterLayer); map.removeLayer(hotspotLayer); map.removeLayer(chartLayer); if (heatmapLayer) map.removeLayer(heatmapLayer); clearChartOverlays();
+      overlayMarkers.forEach((overlay) => map.removeOverlay(overlay)); map.removeOverlay(popupOverlay); map.removeLayer(markerLayer); map.removeLayer(userMarkerLayer); map.removeLayer(clusterLayer); map.removeLayer(hotspotLayer); map.removeLayer(chartLayer); if (heatmapLayer) map.removeLayer(heatmapLayer); clearChartOverlays();
     },
   };
 };
