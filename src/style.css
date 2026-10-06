@@ -662,9 +662,9 @@ button {
 }
 
 .chapter7-chart-overlay {
-  width: 112px;
-  min-height: 92px;
-  padding: 7px;
+  width: 150px;
+  height: 112px;
+  overflow: hidden;
   background: rgb(255 255 255 / 94%);
   border: 1px solid #cfd9e2;
   border-radius: 6px;
@@ -672,61 +672,12 @@ button {
   pointer-events: auto;
 }
 
-.chapter7-chart-overlay strong,
-.chapter7-chart-overlay small {
+.chapter7-coord {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chapter7-chart-overlay strong {
-  color: var(--ink);
-  font-size: 11px;
-}
-
-.chapter7-chart-overlay small {
+  margin-top: 3px;
   color: var(--muted);
-  font-size: 9px;
-}
-
-.chapter7-bars {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 7px;
-  height: 52px;
-  margin-top: 5px;
-}
-
-.chapter7-bars i {
-  display: block;
-  width: 13px;
-  background: var(--blue);
-  border-radius: 3px 3px 0 0;
-}
-
-.chapter7-bars i:nth-child(2) {
-  background: var(--green);
-}
-
-.chapter7-bars i:nth-child(3) {
-  background: var(--amber);
-}
-
-.chapter7-chart-overlay svg {
-  display: block;
-  width: 100%;
-  height: 55px;
-  margin-top: 4px;
-}
-
-.chapter7-pie {
-  width: 52px;
-  height: 52px;
-  margin: 7px auto 0;
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 12px #fff;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* -------------------------------------------------------------------------- */
